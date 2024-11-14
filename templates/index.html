@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        label {
+            font-weight: bold;
+        }
+        select, input[type="text"], button {
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: calc(100% - 22px);
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .statistics {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #ecf0f1;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        img {
+            max-width: 100px; /* Set a maximum width for images */
+            height: auto; /* Maintain aspect ratio */
+        }
+        
+        /* High-level CSS for Charts */
+        .chart-container {
+            display: flex; 
+            justify-content: space-between; 
+            margin-top: 20px; 
+        }
+        
+        .chart {
+            background-color: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+            flex-basis: calc(50% - 10px); /* Adjust width and spacing */
+        }
+
+        canvas {
+            max-width: 100%; /* Ensure charts are responsive */
+        }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<h1>Product Dashboard</h1>
+
+<label for="month">Select Month:</label>
+<select id="month" onchange="fetchData()">
+    <option value="January">January</option>
+    <option value="February">February</option>
+    <option value="March" selected>March</option>
+    <option value="April">April</option>
+    <option value="May">May</option>
+    <option value="June">June</option>
+    <option value="July">July</option>
+    <option value="August">August</option>
+    <option value="September">September</option>
+    <option value="October">October</option>
+    <option value="November">November</option>
+    <option value="December">December</option>
+</select>
+
+<br><br>
+
+<input type="text" id="search" placeholder="Search transactions..." oninput="searchTransactions()">
+<button onclick="fetchData()">Search</button>
+
+<table id="transactions-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Price</th>
+            <th>Category</th>
+            <th>Sold</th>
+            <th>Date of Sale</th> <!-- New Date of Sale Column -->
+            <th>Image</th> <!-- Image Column -->
+        </tr>
+    </thead>
+    <tbody id="transactions-body"></tbody>
+</table>
+
+<div style="text-align:center;">
+    <button id="prev-button" onclick="changePage(-1)">Previous</button>
+    <button id="next-button" onclick="changePage(1)">Next</button>
+</div>
+
+<div class="statistics">
+    <h3>Sales Statistics:</h3>
+    <p>Total Sales Amount: <span id="total-sales-amount"></span></p>
+    <p>Total Sold Items: <span id="total-sold-items"></span></p>
+    <p>Total Not Sold Items: <span id="total-not-sold-items"></span></p>
+</div>
+
+<div class="chart-container">
+    <div class="chart">
+        <h3>Bar Chart - Products Sold by Price Range</h3>
+        <canvas id="bar-chart" width="400" height="200"></canvas>
+    </div>
+
+    <div class="chart">
+        <h3>Pie Chart - Product Distribution by Category</h3>
+        <canvas id="pie-chart" width="400" height="200"></canvas>
+    </div>
+</div>
+
+<script>
+// Global variables for pagination
+let currentPage = 1;
+let totalPages = 0;
+
+function fetchData() {
+    const month = document.getElementById('month').value;
+
+    // Fetch transactions
+    fetch(`/transactions?month=${month}&page=${currentPage}`)
+        .then(response => response.json())
+        .then(data => {
+            totalPages = data.total_pages;
+            displayTransactions(data.transactions);
+        });
+
+    // Fetch statistics
+    fetch(`/statistics?month=${month}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('total-sales-amount').innerText = data.total_sales_amount || 0;
+            document.getElementById('total-sold-items').innerText = data.total_sold_items || 0;
+            document.getElementById('total-not-sold-items').innerText = data.total_not_sold_items || 0;
+        });
+
+    // Fetch bar chart data
+    fetch(`/bar-chart?month=${month}`)
+        .then(response => response.json())
+        .then(data => {
+            renderBarChart(data);
+        });
+
+    // Fetch pie chart data
+    fetch(`/pie-chart?month=${month}`)
+        .then(response => response.json())
+        .then(data => {
+            renderPieChart(data);
+        });
+}
+
+function renderBarChart(data) {
+   const ctx = document.getElementById('bar-chart').getContext('2d');
+   
+   const priceRanges = Object.keys(data);
+   const counts = Object.values(data);
+
+   // Create or update the chart
+   if (window.barChart) {
+       window.barChart.destroy();
+   }
+
+   window.barChart = new Chart(ctx, {
+       type: 'bar',
+       data: {
+           labels: priceRanges,
+           datasets: [{
+               label: 'Number of Products Sold',
+               data: counts,
+               backgroundColor: 'rgba(75, 192, 192, 0.2)',
+               borderColor: 'rgba(75, 192, 192, 1)',
+               borderWidth: 1
+           }]
+       },
+       options: {
+           scales: {
+               y: {
+                   beginAtZero: true
+               }
+           }
+       }
+   });
+}
+
+function renderPieChart(data) {
+   const ctx = document.getElementById('pie-chart').getContext('2d');
+
+   const categories = Object.keys(data);
+   const counts = Object.values(data);
+
+   // Create or update the chart
+   if (window.pieChart) {
+       window.pieChart.destroy();
+   }
+
+   window.pieChart = new Chart(ctx, {
+       type: 'pie',
+       data: {
+           labels: categories,
+           datasets: [{
+               label: 'Products by Category',
+               data: counts,
+               backgroundColor: [
+                   'rgba(255,99,132,0.2)',
+                   'rgba(54,162,235,0.2)',
+                   'rgba(255,206,86,0.2)',
+                   'rgba(75,192,192,0.2)',
+                   'rgba(153,102,255,.2)',
+                   'rgba(255,159,64,.2)'
+               ],
+               borderColor: [
+                   'rgba(255,99,132)',
+                   'rgba(54,162,235)',
+                   'rgba(255,206,86)',
+                   'rgba(75,192,192)',
+                   'rgba(153,102,255)',
+                   'rgba(25515964)'
+               ],
+               borderWidth: 1
+           }]
+       },
+       options: {
+           responsive: true,
+           plugins: {
+               legend: { position: 'top' },
+               title:{
+                   display:true,
+                   text:'Product Distribution by Category'
+               }
+           }
+       }
+   });
+}
+
+function displayTransactions(transactions) {
+   const tbody = document.getElementById('transactions-body');
+   tbody.innerHTML = '';
+
+   transactions.forEach(transaction => {
+       const row = `<tr>
+                       <td>${transaction.id}</td>
+                       <td>${transaction.title}</td>
+                       <td>${transaction.description}</td>
+                       <td>${transaction.price}</td>
+                       <td>${transaction.category}</td>
+                       <td>${transaction.sold ? 'Yes' : 'No'}</td>
+                       <td>${transaction.date_of_sale}</td> <!-- Date of Sale Column -->
+                       <td><img src="${transaction.image}" alt="${transaction.title} Image"></td> <!-- Image Column -->
+                   </tr>`;
+       tbody.innerHTML += row;
+   });
+}
+
+function searchTransactions() {
+   const searchValue = document.getElementById('search').value.toLowerCase();
+   
+   fetch(`/transactions?month=${document.getElementById('month').value}&search=${searchValue}&page=${currentPage}`)
+       .then(response => response.json())
+       .then(data => {
+           displayTransactions(data.transactions);
+       });
+}
+
+function changePage(direction) {
+   currentPage += direction;
+
+   if (currentPage < 1) currentPage = 1; // Prevent going to page less than one
+   if (currentPage > totalPages) currentPage = totalPages; // Prevent going beyond total pages
+
+   fetchData();
+}
+
+// Initial fetch of data when the page loads
+fetchData();
+</script>
+
+</body>
+</html>
